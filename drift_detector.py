@@ -1,4 +1,6 @@
 #Need to find a way to import scripted conversation data
+from data_simulator import scripted_conversation
+import datetime
 
 # Note: All the logic from your old scoring_engine.py is now inside this class.
 class DriftDetector:
@@ -9,8 +11,14 @@ class DriftDetector:
         self.user_states = {user: {"recent_scores": [], "last_score": 0.0} for user in all_users}
         self.WINDOW_SIZE = 5
         self.TRUST_DECAY_THRESHOLD = 0.5
+
+        #New tags for the score, signal currently, and log history
+        self.coherence_score = 1.0
+        self.signal_tag = "stable_signal"
+        self.log_history = []
+
         
-        # Your scoring rules are now part of the class instance.
+        #Scoring rules are apart of the class now
         self.DRIFT_SIGNALS = {
             "a 'snag'?": (0.62, "Sarcastic questioning; challenges a colleague's statement."),
             "just circling back": (0.61, "Passive-aggressive follow-up; implies lateness."),
@@ -68,6 +76,25 @@ class DriftDetector:
 
         #Return final score and reason
         return round(current_score, 2), reason
+    
+    def _update_system_coherence(self):
+        highest_avg_score = 0
+        for user_state in self.user_states.values():
+            if len(user_state["recent_scores"]) == self.WINDOW_SIZE:
+                avg_score = sum(user_state["recent_scores"]) / self.WINDOW_SIZE
+                if avg_score > highest_avg_score:
+                    highest_avg_score = avg_score
+        
+        # Coherence is the inverse of drift
+        self.coherence_score = round(1.0 - highest_avg_score, 2)
+
+        # Determine the signal tag based on the coherence score
+        if self.coherence_score < 0.5:
+            self.signal_tag = "critical_drift"
+        elif self.coherence_score < 0.8:
+            self.signal_tag = "rising_stress"
+        else:
+            self.signal_tag = "stable"
 
     def process(self, data):
         #This is the main public method and it will be called to process the incoming data
@@ -89,24 +116,23 @@ class DriftDetector:
 
         #Update the user's last score for the next iteration
         user_state["last_score"] = drift_score
+
+        #Update the system coherence score based on all users' states
+        self._update_system_coherence()
         
         #Assemble the final result for this message
-        result = {
-            "drift_score": drift_score,
+        json_log = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "user": user,
+            "text": text,
+            "hrv": hrv,
+            "individual_drift_score": drift_score,
             "reason": reason,
-            "trust_decay_analysis": {
-                "triggered": False,
-                "average_score_in_window": None
-            }
+            "system_coherence_score": self.coherence_score,
+            "system_signal_tag": self.signal_tag
         }
         
-        #Check for a trust decay pattern by using the window size and scores
-        if len(user_state["recent_scores"]) == self.WINDOW_SIZE:
-            average_score = sum(user_state["recent_scores"]) / self.WINDOW_SIZE
-            result["trust_decay_analysis"]["average_score_in_window"] = round(average_score, 2)
-            
-            if average_score > self.TRUST_DECAY_THRESHOLD:
-                result["trust_decay_analysis"]["triggered"] = True
-                result["trust_decay_analysis"]["warning_message"] = f"Potential trust decay in user {user} – intervention suggested!"
-
-        return result
+        #Finally store the log in the history
+        self.log_history.append(json_log)
+        
+        return json_log

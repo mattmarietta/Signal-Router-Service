@@ -1,8 +1,7 @@
-#Need to find a way to import scripted conversation data
 from data_simulator import scripted_conversation
 import datetime
 
-# Note: All the logic from your old scoring_engine.py is now inside this class.
+#File will detect drift from a prewritten script from our previous module
 class DriftDetector:
     def __init__(self):
         #Drift detector is now class based so we need to initialize it with the correct parameters and variables.

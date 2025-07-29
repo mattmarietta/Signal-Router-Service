@@ -5,7 +5,7 @@ class SignalClassifier:
 
         #We need to classify the data as emotional, physiological, or cognitive
         
-        #If we hvae both text and HRV, we classify it as a mixed_signal
+        #If we have both text and HRV, we classify it as a mixed_signal
         if (data.text and data.hrv is not None):
             return "mixed_signal"
 

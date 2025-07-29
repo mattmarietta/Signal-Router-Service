@@ -37,6 +37,7 @@ def signal_ingest(data: SignalData):
     destination = router.route(tag)
 
 
+    #If the destination given to use by the router is drift_detector, we will process the data through the drift detector
     if destination == "drift_detector":
         if data.hrv is None:
             #Simulate the HRV if not provided by the user
@@ -50,9 +51,12 @@ def signal_ingest(data: SignalData):
         #Handle other destinations like the storage or error message
         return {"status": "logged", "destination": destination}
 
+
+#To test both the endpoints of status and log, make sure the application is running and then access the endpoints while it is running
 @app.get("/status")
 #Returns current coherence score, use the signal tag and score to determine the state
 def status():
+    #Simple return for score and the signal tag
     return { "coherence_score": drift_detector.coherence_score, "signal_tag": drift_detector.signal_tag}
 
 

@@ -4,6 +4,7 @@ import time
 from data_simulator import generate_message_stream
 
 #Set the URL of the service for the main endpoint
+#We will simulate request to this endpoint to mimic the data and chat stream, using our simulator, router, and more in the main file
 SERVICE_URL = "http://127.0.0.1:8000/ingest"
 
 def run_test_simulation():

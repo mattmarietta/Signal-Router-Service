@@ -10,19 +10,30 @@ I designed it to be simple and flexible, with each part of the sorting process (
 ---
 
 ## 2. System Architecture
-The service follows the  architectural pattern, creating a clean and efficient data processing pipeline.
 
-Signal Input → Classifier → Router → Drift Detector → Score + Log
+The pipeline is structured as follows:
 
-Signal Input: The /ingest endpoint accepts a JSON object containing a user, optional text, and optional hrv.
+ ```text
+[ Signal Input ] -> [ Classifier ] -> [ Router ] -> [ Drift Detector ] -> [ Score + Log ]
+   (FastAPI)         (Tags data)        (Routes)       (Analyzes & Stores State) 
+```
 
-Classifier: The SignalClassifier class inspects the input and assigns a tag (e.g., "mixed_signal", "text_only") to give to the router.
+### Components
 
-Router: The Router class takes this tag and returns a destination string (e.g., "drift_detector") for a simple approach.
+- **Signal Input**  
+  `/ingest` endpoint accepts JSON with a `user`, optional `text`, and optional `hrv`.
 
-Drift Detector: The DriftDetector class is a stateful module that maintains the conversation history. It processes the signal, calculates an individual drift score, and updates the overall system coherence score and signal tag. This was acquired from the previous module and mostly changed into classes.
+- **Classifier**  
+  `SignalClassifier` analyzes inputs and assigns tags like `"text_only"`, `"hrv_only"`, or `"mixed_signal"`.
 
-Score + Log: The final, detailed JSON log is returned by the endpoint and stored in the detector's history.
+- **Router**  
+  `Router` uses the tag to route data to the appropriate module (e.g., `"drift_detector"`).
+
+- **Drift Detector**  
+  Stateful `DriftDetector` tracks conversation history, calculates drift, and updates a coherence score.
+
+- **Score + Log**  
+  Returns a JSON log containing results, which is stored internally for future reference.
 
 ---
 
@@ -37,17 +48,55 @@ GET /status: Returns a real-time snapshot of the system's health, including the 
 
 GET /log: Dumps a JSON object containing the 10 most recent event logs processed by the system, useful for debugging and historical analysis.
 
+
 ---
 
-## 5. How to Run & Test the Service
+## 4. State Persistence
+To maintain context across restarts, the DriftDetector saves and loads state automatically.
+
+File: detect_state.json
+
+Saved: After every processed message
+
+Loaded: On startup if the file exists
+
+This prevents loss of conversation history between sessions.
+
+---
+## 5. Example Log Output
+```text
+{
+  "timestamp": "2025-07-30T12:24:15.123456",
+  "user": "Sara",
+  "text": "Whatever. I'll believe it when I see the pull request.",
+  "hrv": 42,
+  "individual_drift_score": 1.0,
+  "reason": "Dismissive tone, can be rude to colleagues. (Sudden Negative Shift)",
+  "system_coherence_score": 0.46,
+  "system_signal_tag": "critical_drift"
+}
+```
+---
+## 6. Future Integrations
+
+Plugging in AXIS: An agent like AXIS, which likely specializes in physiological data, would be integrated by adding a new rule to the Router. When the Classifier tags a signal as "physiological_only", the Router would forward that data to the AXIS agent instead of the Drift Detector. This ensures that each specialist agent only receives the data relevant to its function. No other data would be necessary because that could confuse the agent and not give us the result that we are looking for.
+
+Drift Detector:  The DriftDetector itself is a swappable component. A more advanced scoring engine, such as a fine-tuned AI model, could be built as a new class. As long as it has a .process() method, it could be dropped in to replace the current rule-based detector without changing the rest of the application's architecture.
+
+
+---
+
+## 7. How to Run & Test the Service
 Prerequisites: Ensure Python 3, fastapi, uvicorn, and requests are installed.
+
+`pip install fastapi "uvicorn[standard]" requests`
 
 Start the Server: In your first terminal, run the main service:
 
-uvicorn main:app --reload
+`uvicorn main:app --reload`
 
 Run the Test Client: In a second terminal, run the test simulation script. This will send the pre-written conversation to your running service.
 
-python test_client.py
+`python test_client.py`
 
 Check Status: While the server is running, you can visit http://127.0.0.1:8000/status and http://127.0.0.1:8000/log in your browser to monitor the system's state.

@@ -1,10 +1,16 @@
+import os
 from data_simulator import scripted_conversation
 import datetime
+import json
 
 #File will detect drift from a prewritten script from our previous module
 class DriftDetector:
     def __init__(self):
         #Drift detector is now class based so we need to initialize it with the correct parameters and variables.
+
+        #Save the state to a file so that we can keep track of the memory over time
+        self.STATE_FILE = "detect_state.json"
+
 
         all_users = set(message["user"] for message in scripted_conversation)
         self.user_states = {user: {"recent_scores": [], "last_score": 0.0} for user in all_users}
@@ -35,6 +41,24 @@ class DriftDetector:
             "you know what": (0.85, "Defensive and confrontational."),
             "sure, whatever": (0.90, "Dismissive and confrontational."),
         }
+
+    def save_state(self):
+    #Save current user states and a log history to a JSON file
+        state = {
+            "user_states": self.user_states,
+            "log_history": self.log_history,
+        }
+        with open(self.STATE_FILE, 'w') as f:
+            json.dump(state, f, indent=4)
+
+    def load_state(self):
+        #This will load the state from the JSON file if it exists
+        if os.path.exists(self.STATE_FILE):
+            with open(self.STATE_FILE, 'r') as f:
+                state = json.load(f)
+                self.user_states = state.get("user_states", {})
+                self.log_history = state.get("log_history", [])
+
 
     def _base_score_message(self, text):
         #Score a basic message based on the drift signals defined above
@@ -108,7 +132,7 @@ class DriftDetector:
         #Score the message using the scoring methods we had defined earlier
         drift_score, reason = self._context_score_message(text, user_state["last_score"], hrv)
         
-        # Update the user's sliding window of recent scores
+        #Update the user's sliding window of recent scores
         user_state["recent_scores"].append(drift_score)
         if len(user_state["recent_scores"]) > self.WINDOW_SIZE:
             user_state["recent_scores"].pop(0)
@@ -130,8 +154,12 @@ class DriftDetector:
             "system_coherence_score": self.coherence_score,
             "system_signal_tag": self.signal_tag
         }
+
         
         #Finally store the log in the history
         self.log_history.append(json_log)
         
+        #Save the state to the file
+        self.save_state()
+
         return json_log

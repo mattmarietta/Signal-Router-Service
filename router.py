@@ -9,9 +9,10 @@ from typing import Dict
 
 axis = AxisAgentStub()
 
-class Router:
-    def route(payload: Dict) -> Dict:
-        print("Router: Routing payload to AXIS for analysis")
-        analysis_result = axis.analyze(payload)
-        return analysis_result
+def route_to_axis(payload: Dict) -> Dict:
+    print("Router: Routing payload to AXIS for analysis")
+    #Used logic from the requirements to route the payload to AXIS
+    #Mock stub, real application would have more complex logic
+    analysis_result = axis.analyze(payload)
+    return analysis_result
         

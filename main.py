@@ -1,28 +1,24 @@
-#Import libraries and modules needed for the application
-from classifier import SignalClassifier
-from router import Router
-from drift_detector import DriftDetector
-from biometric import get_hrv
-
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Optional
+from typing import Dict, List
+import random
 
-#Sample data model that we will need for our /ingest endpoint
-class SignalData(BaseModel):
-    user: str
-    #Optional field for the text as well
-    text: Optional[str] = None 
-    #Optional field for the HRV being input
-    hrv: Optional[int] = None 
+#New imports
+from router import route_to_axis
+from history_storage import HistoryStorage
 
-#Make an instance of the application
+#Make an instance of the application along with the history storage
 app = FastAPI()
+history = HistoryStorage()
 
-#Make instances of the classifier, router, and drift detector to use
-classifier = SignalClassifier()
-router = Router()
-drift_detector = DriftDetector()
+#New model for input data and to validate it
+class IngestPayload(BaseModel):
+    user_id: str
+    session_id: str
+    hrv_data: Dict[str, float]
+    text_context: str
+    context_tag: str
+    timestamp: str 
 
 #Display a simple message when root endpoint is accessed
 @app.get("/")
@@ -31,37 +27,59 @@ def read_root():
 
 
 @app.post("/ingest")
-def signal_ingest(data: SignalData):
-    #Classify the signal and then route to destination later
-    tag = classifier.classify(data) 
-    destination = router.route(tag)
+def process_signal(data: IngestPayload):
+    #Updated endpoint: Receives mixed signals, analysis from AXIS, assembles recursive log, saves the encrypted log, returns result to user
+    
+    #Prepare the data for processing using the AXIS hook
+    #We will only select the fields that the AXIS stub expects
+    axis_data = data.model_dump(include={'user_id', 'hrv_data', 'text_context', 'timestamp'})
+    axis_result = route_to_axis(axis_data)
 
+    #Assemble the recursive log entry by using the exact structure that we want to save
 
-    #If the destination given to use by the router is drift_detector, we will process the data through the drift detector
-    if destination == "drift_detector":
-        if data.hrv is None:
-            #Simulate the HRV if not provided by the user
-            base_score, _ = drift_detector._base_score_message(data.text or "")
-            data.hrv = get_hrv(base_score)
-        
-        #The process method will return the complete JSON log
-        result_log = drift_detector.process(data)
-        return result_log
-    else:
-        #Handle other destinations like the storage or error message
-        return {"status": "logged", "destination": destination}
+    log_entry = {
+        "session_id": data.session_id,
+        "context_state": {
+            "last_score": axis_result["axis_score"],
+            "recursion_patterns": axis_result["recursion_flags"],
+            "history_depth": random.randint(1, 5),  # Simulated depth
+        },
+        "signals": [
+            {
+                "timestamp": data.timestamp,
+                "type": "chat",
+                "content": data.text_context,
+                "hrv": data.hrv_data,
+                "context": data.context_tag
+            }
+        ]
+    }
 
+    #Use our history module to write the log entry
+    history.write_log(log_entry)
+
+    #Return a simple useful response to confirm what happened
+    return {
+        "status": "logged",
+        "axis_result": axis_result,
+        "log_status": f"Session {data.session_id} logged and encrypted successfully.",
+    }
 
 #To test both the endpoints of status and log, make sure the application is running and then access the endpoints while it is running
 @app.get("/status")
 #Returns current coherence score, use the signal tag and score to determine the state
 def status():
     #Simple return for score and the signal tag
-    return { "coherence_score": drift_detector.coherence_score, "signal_tag": drift_detector.signal_tag}
+    last_log = history.get_last_log()
+    if not last_log:
+        return {"status": "no_logs_found"}
+    
+    #If successful, return the last log's context state
+    return {"latest_context_state": last_log.get("context_state", {})}
 
-
-@app.get("/log")
+#Change old endpoint to use our history storage to retrieve logs
+@app.get("/logs")
 #Dumps the current log
-def log():
-    #Return the last 10 logs from the history
-    return {"logs": drift_detector.log_history[-10:]}
+def get_log(): 
+    #Returns the entire decrypted log history
+    return {"logs": history.get_all_logs()}

@@ -1,50 +1,71 @@
 import requests
 import json
-import time
-from data_simulator import generate_message_stream
+
 
 #Set the URL of the service for the main endpoint
-#We will simulate request to this endpoint to mimic the data and chat stream, using our simulator, router, and more in the main file
-SERVICE_URL = "http://127.0.0.1:8000/ingest"
+#We will simulate request to this endpoint 
+BASE_URL = "http://127.0.0.1:8000"
 
-def run_test_simulation():
-    #This will represent a simulation of the client sending data, acting as a stream of chats 
-    print("*** Starting Test Client Simulation ***")
-    print(f"Sending data to: {SERVICE_URL}\n")
+def test_ingest_endpoint():
+    #Tests the /ingest endpoint by sending a valid mixed-signal payload.
 
-    #Use the generator from data simulator to simulate the stream of messages
-    for message in generate_message_stream():
-        user = message["user"]
-        text = message["text"]
+    print("*** Testing POST /ingest endpoint ***")
 
-        #Create a payload for the POST request, which will be repeated
-        payload = {
-            "user": user,
-            "text": text
-            #Not sending the HRV here because we can use our biometric function to simulate it for now
-            #Could send HRV as well if needed for testing purposes
-        }
+    #Sample payload to send to the /ingest endpoint
+    #This payload would be replaced in a real test with actual data and something that can keep the recursive logs
+    test_payload = {
+        "user_id": "user_test_0001",
+        "session_id": "session_test_0001",
+        "hrv_data": {
+            "rmssd": 39.7,
+            "sdnn": 51.2
+        },
+        "text_context": "I'm fine... I guess. It's just a lot of pressure right now.",
+        "context_tag": "TEAM_RESTRUCTURING",
+        "timestamp": "2025-07-31T17:45:00Z"
+    }
 
-        try:
-            #Send the POST request to the service
-            response = requests.post(SERVICE_URL, json=payload)
-            response.raise_for_status() # Raise an exception for bad status codes
-
-            #Print the detailed JSON log we recieved from the service
-            print(f"*** Sent: '{text}' from '{user}' ***")
-            print(f"*** Received Analysis from Service: ***")
-            print(json.dumps(response.json(), indent=2))
-            print("\n" + "="*50 + "\n")
-
-        #Handle any request exceptions
-        except requests.exceptions.RequestException as e:
-            print(f"Error sending request: {e}")
-            break
+    try:
+        response = requests.post(f"{BASE_URL}/ingest", json=test_payload)
         
-        #Wait for a short time to simulate a real-time conversation
-        time.sleep(1) 
+        #Check if the request was successful and if not print a failure message
+        if response.status_code == 200:
+            print("SUCCESS: /ingest endpoint returned status 200 OK.")
+            print("Response JSON:")
+            #Pretty-print the JSON response
+            print(json.dumps(response.json(), indent=4))
+        else:
+            print(f"FAILURE: /ingest endpoint returned status {response.status_code}.")
+            print("Response Text:", response.text)
+            
+    except requests.exceptions.ConnectionError as e:
+        print(f"CONNECTION ERROR: Could not connect to the server at {BASE_URL}.")
 
-    print("*** Client Simulation Complete ***")
+def test_read_logs_endpoint():
+    """
+    Tests the /read_all_logs endpoint to verify that data is being
+    saved and can be decrypted.
+    """
+    print("\n*** Testing GET /read_all_logs endpoint ***")
+    
+    #Use try and except to handle the connection and response similar to the ingest test
+    try:
+        response = requests.get(f"{BASE_URL}/logs")
+        
+        if response.status_code == 200:
+            print("SUCCESS: /read_all_logs endpoint returned status 200 OK.")
+            print("Decrypted Log History:")
+            print(json.dumps(response.json(), indent=4))
+        else:
+            print(f"FAILURE: /read_all_logs endpoint returned status {response.status_code}.")
+            print("Response Text:", response.text)
+
+    except requests.exceptions.ConnectionError as e:
+        print(f"CONNECTION ERROR: Could not connect to the server at {BASE_URL}.")
 
 if __name__ == "__main__":
-    run_test_simulation()
+    # Run the ingest test first to create a log entry
+    test_ingest_endpoint()
+    
+    #Then run the read test to verify the entry was saved
+    test_read_logs_endpoint()
